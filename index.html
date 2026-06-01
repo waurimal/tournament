@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>동적 토너먼트 대진표 생성기</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --winner-bg: #eff6ff;
+            --winner-border: #3b82f6;
+            --loser-text: #94a3b8;
+            --box-bg: #ffffff;
+            --border-color: #cbd5e1;
+            --bg-color: #f8fafc;
+            --text-main: #1e293b;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin-top: 20px;
+            font-size: 28px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        /* 입력 폼 화면 */
+        #setup-screen {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            margin-top: 40px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            font-size: 16px;
+            resize: none;
+            box-sizing: border-box;
+            margin-top: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        textarea:focus {
+            border-color: var(--primary);
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .btn:hover { background-color: var(--primary-hover); }
+        .btn:active { transform: scale(0.98); }
+        .btn.secondary { background-color: #64748b; margin-top: 0; width: auto;}
+        .btn.secondary:hover { background-color: #475569; }
+
+        /* 대진표 화면 */
+        #bracket-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 1400px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 30px;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+
+        .bracket-scroll-container {
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 20px 40px;
+            box-sizing: border-box;
+            position: relative;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.02);
+            /* 스크롤바 커스텀 */
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 transparent;
+        }
+
+        /* 웹킷 스크롤바 */
+        .bracket-scroll-container::-webkit-scrollbar { height: 8px; }
+        .bracket-scroll-container::-webkit-scrollbar-track { background: transparent; }
+        .bracket-scroll-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 4px; }
+
+        .bracket-wrapper {
+            display: flex;
+            position: relative;
+            min-height: 400px;
+        }
+
+        svg.connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .round {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            min-width: 220px;
+            margin-right: 60px;
+            z-index: 2;
+        }
+
+        .round:last-child { margin-right: 0; }
+
+        .match {
+            background: var(--box-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            margin: 15px 0;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .match:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .player-slot {
+            padding: 12px 16px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .player-slot:last-child { border-bottom: none; }
+
+        .player-slot.clickable:hover {
+            background-color: #f1f5f9;
+        }
+
+        .player-slot.winner {
+            background-color: var(--winner-bg);
+            color: var(--primary);
+            font-weight: 700;
+        }
+        
+        .match.has-winner .player-slot:not(.winner) {
+            color: var(--loser-text);
+            text-decoration: line-through;
+            background-color: #fafafa;
+        }
+
+        .player-slot.empty {
+            color: #cbd5e1;
+            font-style: italic;
+            cursor: default;
+        }
+
+        .player-slot.bye {
+            background-color: #f8fafc;
+            color: #94a3b8;
+            font-style: italic;
+            cursor: default;
+            justify-content: center;
+        }
+        
+        /* 모달 공통 스타일 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 우승자 모달 */
+        .modal-title { font-size: 20px; color: #64748b; margin-bottom: 10px; }
+        .modal-winner-name { font-size: 48px; font-weight: 900; color: #f59e0b; margin: 0 0 30px 0; }
+
+        /* 에러 모달 */
+        .error-icon { font-size: 48px; margin-bottom: 10px; }
+        .error-text { font-size: 18px; color: #333; margin-bottom: 25px; line-height: 1.5; }
+
+        /* Confetti 캔버스 */
+        #confetti-canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 99;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 2px 6px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            color: #64748b;
+        }
+        .winner .badge { background: var(--primary); color: white; }
+
+        /* 푸터 스타일 */
+        footer {
+            margin-top: auto;
+            padding: 30px 20px 10px 20px;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 14px;
+            line-height: 1.6;
+            width: 100%;
+        }
+        
+        .loading-text {
+            color: var(--primary);
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🏆 토너먼트 자동 대진표</h1>
+
+    <!-- 입력 화면 -->
+    <div id="setup-screen">
+        <p style="color: #64748b; margin-bottom: 20px;">참가자 이름을 줄바꿈(엔터)으로 구분하여 입력하세요.<br>인원수에 맞춰 부전승이 자동 배치됩니다.</p>
+        <textarea id="participants" placeholder="김철수&#10;이영희&#10;박지민&#10;최동훈&#10;홍길동"></textarea>
+        <div id="loading-indicator" class="loading-text">서버와 동기화 중입니다...</div>
+        <button class="btn" onclick="window.startTournament()">대진표 생성하기</button>
+    </div>
+
+    <!-- 대진표 화면 -->
+    <div id="bracket-screen">
+        <div class="controls">
+            <button class="btn secondary" onclick="window.resetTournament()">← 다시 만들기</button>
+            <div style="font-size: 14px; color: #64748b;">이름을 클릭하여 승자를 선택하세요! (실시간 자동 저장)</div>
+        </div>
+        
+        <div class="bracket-scroll-container">
+            <div class="bracket-wrapper" id="bracket-wrapper">
+                <!-- SVG 선 그려지는 곳 -->
+                <svg class="connections" id="connections"></svg>
+                <!-- 대진표 DOM이 들어갈 곳 -->
+                <div id="bracket-content" style="display: flex;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 최종 우승자 모달 -->
+    <div id="winner-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title">🎉 최종 우승 🎉</div>
+            <div class="modal-winner-name" id="winner-name-display">이름</div>
+            <button class="btn" onclick="window.closeModal()">닫기</button>
+        </div>
+    </div>
+    <canvas id="confetti-canvas"></canvas>
+
+    <!-- 에러 알림 모달 -->
+    <div id="error-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="error-icon">⚠️</div>
+            <div class="error-text" id="error-text-display">오류 메시지</div>
+            <button class="btn" onclick="window.closeErrorModal()">확인</button>
+        </div>
+    </div>
+
+    <!-- 푸터 -->
+    <footer>
+        만든이: 곽현석(이의초등학교)<br>
+        Copyright &copy; 2026 Eui Elementary School. All Rights Reserved.
+    </footer>
+
+<!-- Firebase 및 로직 처리 (모듈) -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // 상태 변수
+    let matches = [];
+    let roundsCount = 0;
+    let currentUser = null;
+    let lastSeenWinner = null;
+    let unsubscribeFirestore = null;
+
+    // Firebase 초기화 로직 (사용자 제공 설정)
+    const firebaseConfig = {
+        apiKey: "AIzaSyAaRTZlJ_fQAKl8j0lCJfaOdJyx8wMP5Zo",
+        authDomain: "tournament-267ab.firebaseapp.com",
+        projectId: "tournament-267ab",
+        storageBucket: "tournament-267ab.firebasestorage.app",
+        messagingSenderId: "401796751337",
+        appId: "1:401796751337:web:7fbded560a1395cfa8f578",
+        measurementId: "G-XC5Q5PMP61"
+    };
+    const appId = "tournament-267ab-main"; // 데이터가 저장될 고유 경로 식별자
+    
+    let db = null;
+    let auth = null;
+
+    if (firebaseConfig) {
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+
+        const initAuth = async () => {
+            try {
+                // 선생님의 외부 프로젝트이므로 '익명 로그인'을 사용합니다.
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.error("Auth error:", error);
+                window.showError("서버 연결 실패: Firebase 콘솔에서 '익명 로그인'이 활성화되어 있는지 확인해 주세요.");
+            }
+        };
+
+        initAuth();
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            if (user) {
+                subscribeToTournamentData();
+            }
+        });
+    } else {
+        console.warn("Firebase config not found. Running in local-only mode.");
+        // Firebase 설정이 없는 로컬 테스트 환경을 위한 폴백
+        document.getElementById('loading-indicator').style.display = 'none';
+    }
+
+    // Firestore 실시간 데이터 구독
+    function subscribeToTournamentData() {
+        if (unsubscribeFirestore) unsubscribeFirestore();
+        
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentState', 'main');
+        
+        document.getElementById('loading-indicator').style.display = 'block';
+
+        unsubscribeFirestore = onSnapshot(docRef, (snapshot) => {
+            document.getElementById('loading-indicator').style.display = 'none';
+            
+            if (snapshot.exists()) {
+                const data = snapshot.data();
+                if (data.isStarted) {
+                    matches = data.matches || [];
+                    roundsCount = data.roundsCount || 0;
+                    
+                    document.getElementById('setup-screen').style.display = 'none';
+                    document.getElementById('bracket-screen').style.display = 'flex';
+                    
+                    renderBracket();
+
+                    // 최종 우승자 감지 및 모달 표시
+                    if (data.finalWinner && data.finalWinner !== lastSeenWinner) {
+                        showWinnerModal(data.finalWinner);
+                        lastSeenWinner = data.finalWinner;
+                    } else if (!data.finalWinner) {
+                        lastSeenWinner = null;
+                    }
+                } else {
+                    showSetupScreen();
+                }
+            } else {
+                showSetupScreen();
+            }
+        }, (error) => {
+            console.error("Firestore Error:", error);
+            document.getElementById('loading-indicator').style.display = 'none';
+            showError("데이터를 불러오는 중 오류가 발생했습니다.");
+        });
+    }
+
+    function showSetupScreen() {
+        document.getElementById('setup-screen').style.display = 'block';
+        document.getElementById('bracket-screen').style.display = 'none';
+        matches = [];
+        lastSeenWinner = null;
+        clearConfetti();
+    }
+
+    // 전역 함수로 노출 (HTML onclick에서 사용)
+    window.resetTournament = async () => {
+        if (db && currentUser) {
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentState', 'main');
+            await setDoc(docRef, { isStarted: false, matches: [], roundsCount: 0, finalWinner: null });
+        } else {
+            showSetupScreen();
+        }
+    };
+
+    window.startTournament = async () => {
+        const input = document.getElementById('participants').value;
+        let players = input.split('\n').map(p => p.trim()).filter(p => p !== '');
+
+        if (players.length < 2) {
+            showError('최소 2명 이상의 인원을 줄바꿈으로 입력해주세요!');
+            return;
+        }
+
+        // 참가자 무작위 셔플 (Fisher-Yates)
+        for (let i = players.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [players[i], players[j]] = [players[j], players[i]];
+        }
+
+        buildTree(players);
+        
+        if (db && currentUser) {
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentState', 'main');
+            await setDoc(docRef, {
+                isStarted: true,
+                matches: matches,
+                roundsCount: roundsCount,
+                finalWinner: null
+            });
+        } else {
+            // Firestore가 없는 경우(로컬) UI 직접 업데이트
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('bracket-screen').style.display = 'flex';
+            renderBracket();
+            setTimeout(drawLines, 50);
+        }
+    };
+
+    // 토너먼트 논리 구조(트리) 생성 로직
+    function buildTree(players) {
+        matches = [];
+        const numPlayers = players.length;
+        const nextPowerOf2 = Math.pow(2, Math.ceil(Math.log2(numPlayers)));
+        const numByes = nextPowerOf2 - numPlayers;
+        roundsCount = Math.log2(nextPowerOf2);
+
+        let round0Matches = [];
+        let matchIdCounter = 0;
+        let playerIdx = 0;
+        const numMatchesR0 = nextPowerOf2 / 2;
+
+        for (let i = 0; i < numMatchesR0; i++) {
+            let p1 = players[playerIdx++];
+            let p2 = null;
+            if (i < numByes) p2 = null;
+            else p2 = players[playerIdx++];
+            
+            round0Matches.push({
+                id: matchIdCounter++,
+                round: 0,
+                p1: p1,
+                p2: p2,
+                winner: p2 === null ? p1 : null 
+            });
+        }
+
+        for (let i = round0Matches.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [round0Matches[i], round0Matches[j]] = [round0Matches[j], round0Matches[i]];
+        }
+
+        matches.push(...round0Matches);
+        let prevRoundMatches = round0Matches;
+
+        for (let r = 1; r < roundsCount; r++) {
+            let currentRoundMatches = [];
+            let numMatches = prevRoundMatches.length / 2;
+            
+            for (let i = 0; i < numMatches; i++) {
+                let m = { id: matchIdCounter++, round: r, p1: null, p2: null, winner: null };
+                currentRoundMatches.push(m);
+                matches.push(m);
+
+                let prev1 = prevRoundMatches[i * 2];
+                let prev2 = prevRoundMatches[i * 2 + 1];
+                
+                prev1.nextMatchId = m.id;
+                prev1.nextSlot = 'p1';
+                prev2.nextMatchId = m.id;
+                prev2.nextSlot = 'p2';
+
+                if (prev1.winner) m.p1 = prev1.winner;
+                if (prev2.winner) m.p2 = prev2.winner;
+            }
+            prevRoundMatches = currentRoundMatches;
+        }
+        
+        if (prevRoundMatches.length > 0) {
+            prevRoundMatches[0].nextMatchId = null;
+        }
+    }
+
+    // 대진표 HTML 렌더링
+    function renderBracket() {
+        const container = document.getElementById('bracket-content');
+        container.innerHTML = '';
+
+        for (let r = 0; r < roundsCount; r++) {
+            const roundDiv = document.createElement('div');
+            roundDiv.className = 'round';
+            
+            const roundMatches = matches.filter(m => m.round === r);
+            
+            roundMatches.forEach(match => {
+                const matchDiv = document.createElement('div');
+                matchDiv.className = `match ${match.winner ? 'has-winner' : ''}`;
+                matchDiv.id = `match-${match.id}`;
+
+                const p1Div = createPlayerSlot(match, 'p1');
+                const p2Div = createPlayerSlot(match, 'p2');
+
+                matchDiv.appendChild(p1Div);
+                matchDiv.appendChild(p2Div);
+                roundDiv.appendChild(matchDiv);
+            });
+
+            container.appendChild(roundDiv);
+        }
+        
+        // 렌더링 직후 선 다시 그리기
+        setTimeout(drawLines, 10);
+    }
+
+    function createPlayerSlot(match, slotKey) {
+        const div = document.createElement('div');
+        const playerName = match[slotKey];
+        const isBye = (slotKey === 'p2' && match.p2 === null && match.round === 0);
+        
+        div.className = 'player-slot';
+        
+        if (isBye) {
+            div.classList.add('bye');
+            div.innerHTML = '<span>부전승</span>';
+            return div;
+        }
+
+        if (!playerName) {
+            div.classList.add('empty');
+            div.innerText = '대기 중...';
+            return div;
+        }
+
+        div.innerText = playerName;
+
+        if (match.p1 && match.p2) {
+            div.classList.add('clickable');
+            div.onclick = () => window.setWinner(match.id, playerName);
+        }
+
+        if (match.winner === playerName) {
+            div.classList.add('winner');
+            const badge = document.createElement('span');
+            badge.className = 'badge';
+            badge.innerText = 'WIN';
+            div.appendChild(badge);
+        }
+
+        return div;
+    }
+
+    // 승자 선택 로직
+    window.setWinner = async (matchId, playerName) => {
+        const match = matches.find(m => m.id === matchId);
+        if (!match || !playerName) return;
+        if (match.p2 === null) return; 
+
+        match.winner = playerName;
+        let finalWinnerName = null;
+
+        if (match.nextMatchId !== null) {
+            const nextMatch = matches.find(m => m.id === match.nextMatchId);
+            if (match.nextSlot === 'p1') nextMatch.p1 = playerName;
+            else nextMatch.p2 = playerName;
+
+            clearDownstreamLocally(nextMatch.id);
+        } else {
+            // 결승전 승리
+            finalWinnerName = playerName;
+        }
+
+        // Firestore 저장 (onSnapshot 이벤트가 발생하여 UI가 자동으로 렌더링 됨)
+        if (db && currentUser) {
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'tournamentState', 'main');
+            await updateDoc(docRef, { matches: matches, finalWinner: finalWinnerName });
+        } else {
+            // 로컬 모드
+            renderBracket();
+            if (finalWinnerName) {
+                showWinnerModal(finalWinnerName);
+            }
+        }
+    };
+
+    function clearDownstreamLocally(matchId) {
+        const match = matches.find(m => m.id === matchId);
+        if (!match) return;
+        
+        match.winner = null;
+        if (match.nextMatchId !== null) {
+            const nextMatch = matches.find(m => m.id === match.nextMatchId);
+            if (match.nextSlot === 'p1') nextMatch.p1 = null;
+            else nextMatch.p2 = null;
+            clearDownstreamLocally(nextMatch.id);
+        }
+    }
+
+    // SVG 선 그리기
+    function drawLines() {
+        const svg = document.getElementById('connections');
+        svg.innerHTML = ''; 
+        const wrapper = document.getElementById('bracket-wrapper');
+        if(!wrapper) return;
+        
+        const wrapperRect = wrapper.getBoundingClientRect();
+
+        matches.forEach(m => {
+            if (m.nextMatchId !== null) {
+                const el1 = document.getElementById(`match-${m.id}`);
+                const el2 = document.getElementById(`match-${m.nextMatchId}`);
+                
+                if (el1 && el2) {
+                    const rect1 = el1.getBoundingClientRect();
+                    const rect2 = el2.getBoundingClientRect();
+
+                    const x1 = rect1.right - wrapperRect.left;
+                    const y1 = rect1.top + (rect1.height / 2) - wrapperRect.top;
+                    
+                    const x2 = rect2.left - wrapperRect.left;
+                    const y2 = rect2.top + (rect2.height / 2) - wrapperRect.top;
+
+                    const midX = x1 + (x2 - x1) / 2;
+
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    path.setAttribute("d", `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
+                    
+                    if (m.winner) {
+                        path.setAttribute("stroke", "var(--primary)");
+                        path.setAttribute("stroke-width", "3");
+                    } else {
+                        path.setAttribute("stroke", "var(--border-color)");
+                        path.setAttribute("stroke-width", "2");
+                    }
+                    path.setAttribute("fill", "none");
+                    svg.appendChild(path);
+                }
+            }
+        });
+    }
+
+    window.addEventListener('resize', () => {
+        if (document.getElementById('bracket-screen').style.display === 'flex') {
+            drawLines();
+        }
+    });
+
+    // --- 커스텀 에러 모달 ---
+    function showError(message) {
+        document.getElementById('error-text-display').innerText = message;
+        document.getElementById('error-modal').style.display = 'flex';
+    }
+
+    window.closeErrorModal = () => {
+        document.getElementById('error-modal').style.display = 'none';
+    };
+
+    // --- 축하 파티클(Confetti) 및 우승 모달 ---
+    let confettiAnimationFrame;
+    
+    function showWinnerModal(winnerName) {
+        document.getElementById('winner-name-display').innerText = winnerName;
+        document.getElementById('winner-modal').style.display = 'flex';
+        startConfetti();
+    }
+
+    window.closeModal = () => {
+        document.getElementById('winner-modal').style.display = 'none';
+        clearConfetti();
+    };
+
+    function startConfetti() {
+        const canvas = document.getElementById('confetti-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particles = [];
+        const colors = ['#f59e0b', '#3b82f6', '#ef4444', '#10b981', '#a855f7'];
+
+        for (let i = 0; i < 150; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height - canvas.height,
+                w: Math.random() * 10 + 5,
+                h: Math.random() * 10 + 5,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                vy: Math.random() * 3 + 2,
+                vx: Math.random() * 2 - 1,
+                rot: Math.random() * 360,
+                rotSpeed: Math.random() * 5 - 2.5
+            });
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.y += p.vy;
+                p.x += p.vx;
+                p.rot += p.rotSpeed;
+
+                if (p.y > canvas.height) {
+                    p.y = -10;
+                    p.x = Math.random() * canvas.width;
+                }
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot * Math.PI / 180);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+                ctx.restore();
+            });
+            confettiAnimationFrame = requestAnimationFrame(render);
+        }
+        render();
+    }
+
+    function clearConfetti() {
+        if (confettiAnimationFrame) {
+            cancelAnimationFrame(confettiAnimationFrame);
+        }
+        const canvas = document.getElementById('confetti-canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+</script>
+
+</body>
+</html>
